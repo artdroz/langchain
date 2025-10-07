@@ -925,6 +925,7 @@ def create_agent(  # noqa: D417
     debug: bool = False,
     version: Literal["v1", "v2"] = "v2",
     name: str | None = None,
+    node_name: str = "",
     **deprecated_kwargs: Any,
 ) -> CompiledStateGraph[StateT, ContextT]:
     """Creates an agent graph that calls tools in a loop until a stopping condition is met.
@@ -1156,6 +1157,7 @@ def create_agent(  # noqa: D417
             middleware=middleware,
             response_format=response_format,
             context_schema=context_schema,
+            node_name=node_name,
         ).compile(
             checkpointer=checkpointer,
             store=store,

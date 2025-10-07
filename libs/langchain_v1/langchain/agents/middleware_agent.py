@@ -141,6 +141,7 @@ def create_agent(  # noqa: PLR0915
     middleware: Sequence[AgentMiddleware[AgentState[ResponseT], ContextT]] = (),
     response_format: ResponseFormat[ResponseT] | type[ResponseT] | None = None,
     context_schema: type[ContextT] | None = None,
+    node_name: str = ""
 ) -> StateGraph[
     AgentState[ResponseT], ContextT, PublicAgentState[ResponseT], PublicAgentState[ResponseT]
 ]:
@@ -411,7 +412,7 @@ def create_agent(  # noqa: PLR0915
     # Use sync or async based on model capabilities
     from langgraph._internal._runnable import RunnableCallable
 
-    graph.add_node("model_request", RunnableCallable(model_request, amodel_request))
+    graph.add_node(node_name + "_" + "model_request", RunnableCallable(model_request, amodel_request))
 
     # Only add tools node if we have tools
     if tool_node is not None:
@@ -420,25 +421,25 @@ def create_agent(  # noqa: PLR0915
     # Add middleware nodes
     for m in middleware:
         if m.__class__.before_model is not AgentMiddleware.before_model:
-            graph.add_node(
+            graph.add_node(node_name + "_" +
                 f"{m.__class__.__name__}.before_model", m.before_model, input_schema=state_schema
             )
 
         if m.__class__.after_model is not AgentMiddleware.after_model:
-            graph.add_node(
+            graph.add_node(node_name + "_" +
                 f"{m.__class__.__name__}.after_model", m.after_model, input_schema=state_schema
             )
 
     # add start edge
     first_node = (
-        f"{middleware_w_before[0].__class__.__name__}.before_model"
+        node_name + "_" + f"{middleware_w_before[0].__class__.__name__}.before_model"
         if middleware_w_before
-        else "model_request"
+        else node_name + "_" + "model_request"
     )
     last_node = (
-        f"{middleware_w_after[0].__class__.__name__}.after_model"
+        node_name + "_" + f"{middleware_w_after[0].__class__.__name__}.after_model"
         if middleware_w_after
-        else "model_request"
+        else node_name + "_" + "model_request"
     )
     graph.add_edge(START, first_node)
 
@@ -454,14 +455,14 @@ def create_agent(  # noqa: PLR0915
             _make_model_to_tools_edge(first_node, structured_output_tools, tool_node),
             [first_node, "tools", END],
         )
-    elif last_node == "model_request":
+    elif last_node == node_name + "_" + "model_request":
         # If no tools, just go to END from model
         graph.add_edge(last_node, END)
     else:
         # If after_model, then need to check for jump_to
         _add_middleware_edge(
             graph,
-            f"{middleware_w_after[0].__class__.__name__}.after_model",
+            node_name + "_" + f"{middleware_w_after[0].__class__.__name__}.after_model",
             END,
             first_node,
             jump_to=middleware_w_after[0].after_model_jump_to,
@@ -472,29 +473,29 @@ def create_agent(  # noqa: PLR0915
         for m1, m2 in itertools.pairwise(middleware_w_before):
             _add_middleware_edge(
                 graph,
-                f"{m1.__class__.__name__}.before_model",
-                f"{m2.__class__.__name__}.before_model",
+                node_name + "_" + f"{m1.__class__.__name__}.before_model",
+                node_name + "_" + f"{m2.__class__.__name__}.before_model",
                 first_node,
                 jump_to=m1.before_model_jump_to,
             )
         # Go directly to model_request after the last before_model
         _add_middleware_edge(
             graph,
-            f"{middleware_w_before[-1].__class__.__name__}.before_model",
-            "model_request",
+            node_name + "_" + f"{middleware_w_before[-1].__class__.__name__}.before_model",
+            node_name + "_" + "model_request",
             first_node,
             jump_to=middleware_w_before[-1].before_model_jump_to,
         )
 
     if middleware_w_after:
-        graph.add_edge("model_request", f"{middleware_w_after[-1].__class__.__name__}.after_model")
+        graph.add_edge(node_name + "_" + "model_request", node_name + "_" + f"{middleware_w_after[-1].__class__.__name__}.after_model")
         for idx in range(len(middleware_w_after) - 1, 0, -1):
             m1 = middleware_w_after[idx]
             m2 = middleware_w_after[idx - 1]
             _add_middleware_edge(
                 graph,
-                f"{m1.__class__.__name__}.after_model",
-                f"{m2.__class__.__name__}.after_model",
+                node_name + "_" + f"{m1.__class__.__name__}.after_model",
+                node_name + "_" + f"{m2.__class__.__name__}.after_model",
                 first_node,
                 jump_to=m1.after_model_jump_to,
             )
