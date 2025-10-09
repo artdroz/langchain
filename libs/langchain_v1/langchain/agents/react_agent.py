@@ -201,6 +201,7 @@ class _AgentBuilder(Generic[StateT, ContextT, StructuredResponseT]):
         version: Literal["v1", "v2"] = "v2",
         name: str | None = None,
         store: BaseStore | None = None,
+        node_name: str = ""
     ) -> None:
         self.model = model
         self.tools = tools
@@ -213,6 +214,7 @@ class _AgentBuilder(Generic[StateT, ContextT, StructuredResponseT]):
         self.version = version
         self.name = name
         self.store = store
+        self.node_name = node_name
 
         if isinstance(model, Runnable) and not isinstance(model, BaseChatModel):
             msg = (
@@ -356,7 +358,7 @@ class _AgentBuilder(Generic[StateT, ContextT, StructuredResponseT]):
 
         return Command(
             update={"messages": [response, *tool_messages]},
-            goto="agent",
+            goto=self.node_name + "_" + "agent",
         )
 
     def _handle_single_structured_output(
@@ -416,7 +418,7 @@ class _AgentBuilder(Generic[StateT, ContextT, StructuredResponseT]):
                         ),
                     ],
                 },
-                goto="agent",
+                goto=self.node_name + "_" + "agent",
             )
 
     def _handle_structured_output_error(
@@ -588,7 +590,7 @@ class _AgentBuilder(Generic[StateT, ContextT, StructuredResponseT]):
             )
 
         def call_model(
-            state: StateT, runtime: Runtime[ContextT], config: RunnableConfig
+             state: StateT, runtime: Runtime[ContextT], config: RunnableConfig
         ) -> dict[str, Any] | Command:
             """Call the model with the current state and return the response."""
             if self._is_async_dynamic_model:
@@ -794,7 +796,7 @@ class _AgentBuilder(Generic[StateT, ContextT, StructuredResponseT]):
 
     def _get_entry_point(self) -> str:
         """Get the workflow entry point."""
-        return "pre_model_hook" if self.pre_model_hook else "agent"
+        return "pre_model_hook" if self.pre_model_hook else self.node_name + "_" + "agent"
 
     def _get_model_paths(self) -> list[str]:
         """Get possible edge destinations from model node."""
@@ -827,7 +829,7 @@ class _AgentBuilder(Generic[StateT, ContextT, StructuredResponseT]):
         workflow.set_entry_point(self._get_entry_point())
 
         # Add nodes
-        workflow.add_node("agent", self.create_model_node(), input_schema=self._get_input_schema())
+        workflow.add_node(self.node_name + "_" + "agent", self.create_model_node(), input_schema=self._get_input_schema())
 
         if self._tool_calling_enabled:
             workflow.add_node("tools", self._tool_node)
@@ -840,10 +842,10 @@ class _AgentBuilder(Generic[StateT, ContextT, StructuredResponseT]):
 
         # Add edges
         if self.pre_model_hook:
-            workflow.add_edge("pre_model_hook", "agent")
+            workflow.add_edge("pre_model_hook", self.node_name + "_" + "agent")
 
         if self.post_model_hook:
-            workflow.add_edge("agent", "post_model_hook")
+            workflow.add_edge(self.node_name + "_" + "agent", "post_model_hook")
             post_hook_paths = self._get_post_model_hook_paths()
             if len(post_hook_paths) == 1:
                 # No need for a conditional edge if there's only one path
@@ -858,10 +860,10 @@ class _AgentBuilder(Generic[StateT, ContextT, StructuredResponseT]):
             model_paths = self._get_model_paths()
             if len(model_paths) == 1:
                 # No need for a conditional edge if there's only one path
-                workflow.add_edge("agent", model_paths[0])
+                workflow.add_edge(self.node_name + "_" + "agent", model_paths[0])
             else:
                 workflow.add_conditional_edges(
-                    "agent",
+                    self.node_name + "_" + "agent",
                     self.create_model_router(),
                     path_map=model_paths,
                 )
@@ -1208,6 +1210,7 @@ def create_agent(  # noqa: D417
         version=version,
         name=name,
         store=store,
+        node_name=node_name
     )
 
     # Build and compile the workflow
