@@ -1,6 +1,7 @@
 """Human in the loop middleware."""
 
 from typing import Any, Literal
+import json
 
 from langchain_core.messages import AIMessage, ToolCall, ToolMessage
 from langgraph.types import interrupt
@@ -180,7 +181,7 @@ class HumanInTheLoopMiddleware(AgentMiddleware):
             config = self.interrupt_on[tool_name]
             description = (
                 config.get("description")
-                or f"{self.description_prefix}\n\nTool: {tool_name}\nArgs: {tool_args}"
+                or json.dumps(tool_args)
             )
 
             request: HumanInTheLoopRequest = {
