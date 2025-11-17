@@ -3,7 +3,7 @@
 from typing import Any, Literal
 import json
 
-from langchain_core.messages import AIMessage, ToolCall, ToolMessage
+from langchain_core.messages import AIMessage, ToolCall, ToolMessage, HumanMessage
 from langgraph.types import interrupt
 from typing_extensions import NotRequired, TypedDict
 
@@ -224,7 +224,7 @@ class HumanInTheLoopMiddleware(AgentMiddleware):
                 )
             elif response["type"] == "response" and config.get("allow_respond"):
                 # Create a tool message with the human's text response
-                content = response.get("args") or (
+                content = (
                     f"User rejected the tool call for `{tool_call['name']}` "
                     f"with id {tool_call['id']}"
                 )
@@ -235,7 +235,7 @@ class HumanInTheLoopMiddleware(AgentMiddleware):
                     status="error",
                 )
                 revised_tool_calls.append(tool_call)
-                artificial_tool_messages.append(tool_message)
+                artificial_tool_messages.extend([tool_message, HumanMessage(content=response.get("args", ""))])
             else:
                 allowed_actions = [
                     action
@@ -252,5 +252,4 @@ class HumanInTheLoopMiddleware(AgentMiddleware):
 
         # Update the AI message to only include approved tool calls
         last_ai_msg.tool_calls = revised_tool_calls
-
         return {"messages": [last_ai_msg, *artificial_tool_messages]}
