@@ -172,6 +172,7 @@ class HumanInTheLoopMiddleware(AgentMiddleware):
         # Process all tool calls that require interrupts
         revised_tool_calls: list[ToolCall] = auto_approved_tool_calls.copy()
         artificial_tool_messages: list[ToolMessage] = []
+        human_message_content = None
 
         # Create interrupt requests for all tools that need approval
         interrupt_requests: list[HumanInTheLoopRequest] = []
@@ -195,6 +196,10 @@ class HumanInTheLoopMiddleware(AgentMiddleware):
             interrupt_requests.append(request)
 
         responses: list[HumanInTheLoopResponse] = interrupt(interrupt_requests)
+
+        # Handle single "response" for multiple tool calls (broadcast)
+        if len(responses) == 1 and responses[0]["type"] == "response" and len(interrupt_tool_calls) > 1:
+            responses = [responses[0]] * len(interrupt_tool_calls)
 
         # Validate that the number of responses matches the number of interrupt tool calls
         if (responses_len := len(responses)) != (
@@ -235,7 +240,8 @@ class HumanInTheLoopMiddleware(AgentMiddleware):
                     status="error",
                 )
                 revised_tool_calls.append(tool_call)
-                artificial_tool_messages.extend([tool_message, HumanMessage(content=response.get("args", ""))])
+                artificial_tool_messages.append(tool_message)
+                human_message_content = response.get("args", "")
             else:
                 allowed_actions = [
                     action
@@ -249,6 +255,9 @@ class HumanInTheLoopMiddleware(AgentMiddleware):
                     f"Expected one of {allowed_actions} based on the tool's configuration."
                 )
                 raise ValueError(msg)
+
+        if human_message_content is not None:
+            artificial_tool_messages.append(HumanMessage(content=human_message_content))
 
         # Update the AI message to only include approved tool calls
         last_ai_msg.tool_calls = revised_tool_calls
